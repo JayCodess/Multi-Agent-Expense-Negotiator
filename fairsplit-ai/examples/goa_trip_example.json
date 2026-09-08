@@ -1,0 +1,10 @@
+{
+  "total_amount": 30000,
+  "itemized_costs": {"stay": 15000, "food": 8000, "travel": 7000},
+  "max_rounds": 5,
+  "people": [
+    {"name": "Aisha", "preferences": "Skipped 2 group dinners, shared a room alone", "hard_max_budget": 8000, "hard_min_budget": null},
+    {"name": "Raj", "preferences": "Used the private room upgrade, ate everything", "hard_max_budget": null, "hard_min_budget": null},
+    {"name": "Meera", "preferences": "Budget-constrained this month, joined only for 2 of 4 days", "hard_max_budget": 6000, "hard_min_budget": null}
+  ]
+}

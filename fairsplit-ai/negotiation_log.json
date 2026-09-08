@@ -1,0 +1,72 @@
+[
+  {
+    "label": "mediator_propose_round_1",
+    "round": 1,
+    "state_snapshot": {
+      "current_proposal": {
+        "Aisha": 8000.0,
+        "Raj": 16000.0,
+        "Meera": 6000.0
+      },
+      "objections": [],
+      "status": "negotiating",
+      "round_number": 1
+    }
+  },
+  {
+    "label": "validate_hard_round_1",
+    "round": 1,
+    "state_snapshot": {
+      "current_proposal": {
+        "Aisha": 8000.0,
+        "Raj": 16000.0,
+        "Meera": 6000.0
+      },
+      "objections": [],
+      "status": "negotiating",
+      "round_number": 1
+    }
+  },
+  {
+    "label": "collect_objections_round_1",
+    "round": 1,
+    "state_snapshot": {
+      "current_proposal": {
+        "Aisha": 8000.0,
+        "Raj": 16000.0,
+        "Meera": 6000.0
+      },
+      "objections": [],
+      "status": "negotiating",
+      "round_number": 1
+    }
+  },
+  {
+    "label": "check_convergence_round_1",
+    "round": 1,
+    "state_snapshot": {
+      "current_proposal": {
+        "Aisha": 8000.0,
+        "Raj": 16000.0,
+        "Meera": 6000.0
+      },
+      "objections": [],
+      "status": "converged",
+      "round_number": 1
+    }
+  },
+  {
+    "label": "explain_final",
+    "round": 1,
+    "state_snapshot": {
+      "current_proposal": {
+        "Aisha": 8000.0,
+        "Raj": 16000.0,
+        "Meera": 6000.0
+      },
+      "objections": [],
+      "status": "converged",
+      "round_number": 1
+    }
+  }
+]
