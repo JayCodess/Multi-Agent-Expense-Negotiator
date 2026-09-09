@@ -75,33 +75,53 @@ def mediator_propose_initial(
     """
     Generate the initial proposal. Returns {"proposal": {...}, "reasoning": "..."}.
     Retries up to max_retries on malformed JSON.
-    """
-    prompt = MEDIATOR_INITIAL_PROMPT.format(
-        total_amount=total_amount,
-        itemized_costs=json.dumps(itemized_costs) if itemized_costs else "N/A",
-        people_block=_format_people_block(people),
-    )
 
-    for attempt in range(max_retries + 1):
-        try:
-            raw = call_llm(prompt)
-            result = _parse_json_response(raw)
-            if "proposal" not in result:
-                raise KeyError("Missing 'proposal' key in mediator response")
-            # Ensure all people are in the proposal
-            for p in people:
-                if p["name"] not in result["proposal"]:
-                    raise KeyError(f"Missing person '{p['name']}' in proposal")
-            return result
-        except Exception as e:
-            logger.warning(
-                "Mediator initial proposal attempt %d failed: %s\nRaw output was: %r", 
-                attempt + 1, e, raw
-            )
-            if attempt == max_retries:
-                raise
-    # Should not reach here
-    raise RuntimeError("Mediator failed to produce a valid proposal")
+    Never raises — falls back to an equal split on persistent failure.
+    """
+    raw = None  # Ensure raw is always defined for safe logging
+
+    try:
+        prompt = MEDIATOR_INITIAL_PROMPT.format(
+            total_amount=total_amount,
+            itemized_costs=json.dumps(itemized_costs) if itemized_costs else "N/A",
+            people_block=_format_people_block(people),
+        )
+
+        for attempt in range(max_retries + 1):
+            try:
+                raw = call_llm(prompt)
+                result = _parse_json_response(raw)
+                if "proposal" not in result:
+                    raise KeyError("Missing 'proposal' key in mediator response")
+                # Ensure all people are in the proposal
+                for p in people:
+                    if p["name"] not in result["proposal"]:
+                        raise KeyError(f"Missing person '{p['name']}' in proposal")
+                return result
+            except Exception as e:
+                logger.warning(
+                    "Mediator initial proposal attempt %d failed: %s\nRaw output was: %r",
+                    attempt + 1, e, raw
+                )
+                if attempt == max_retries:
+                    break
+    except Exception as e:
+        logger.warning(
+            "Mediator initial proposal outer error: %s\nRaw output was: %r", e, raw
+        )
+
+    # Fallback: equal split across all people
+    equal_amount = total_amount / len(people) if people else 0
+    fallback_proposal = {p["name"]: equal_amount for p in people}
+    logger.error(
+        "Mediator failed to produce a valid initial proposal after %d retries — "
+        "falling back to equal split: %s",
+        max_retries + 1, fallback_proposal,
+    )
+    return {
+        "proposal": fallback_proposal,
+        "reasoning": "Fallback: could not get a valid response from the mediator agent — defaulting to an equal split.",
+    }
 
 
 def mediator_propose_revision(
@@ -114,28 +134,48 @@ def mediator_propose_revision(
 ) -> Dict[str, Any]:
     """
     Revise the proposal based on objections. Returns {"proposal": {...}, "reasoning": "..."}.
-    """
-    prompt = MEDIATOR_REVISION_PROMPT.format(
-        current_proposal=json.dumps(current_proposal),
-        previous_reasoning=previous_reasoning or "No prior reasoning.",
-        objections_block=_format_objections_block(objections),
-        total_amount=total_amount,
-    )
 
-    for attempt in range(max_retries + 1):
-        try:
-            raw = call_llm(prompt)
-            result = _parse_json_response(raw)
-            if "proposal" not in result:
-                raise KeyError("Missing 'proposal' key in mediator revision")
-            for p in people:
-                if p["name"] not in result["proposal"]:
-                    raise KeyError(f"Missing person '{p['name']}' in revision proposal")
-            return result
-        except Exception as e:
-            logger.warning(
-                "Mediator revision attempt %d failed: %s", attempt + 1, e
-            )
-            if attempt == max_retries:
-                raise
-    raise RuntimeError("Mediator failed to produce a valid revised proposal")
+    Never raises — falls back to keeping the current proposal on persistent failure.
+    """
+    raw = None  # Ensure raw is always defined for safe logging
+
+    try:
+        prompt = MEDIATOR_REVISION_PROMPT.format(
+            current_proposal=json.dumps(current_proposal),
+            previous_reasoning=previous_reasoning or "No prior reasoning.",
+            objections_block=_format_objections_block(objections),
+            total_amount=total_amount,
+        )
+
+        for attempt in range(max_retries + 1):
+            try:
+                raw = call_llm(prompt)
+                result = _parse_json_response(raw)
+                if "proposal" not in result:
+                    raise KeyError("Missing 'proposal' key in mediator revision")
+                for p in people:
+                    if p["name"] not in result["proposal"]:
+                        raise KeyError(f"Missing person '{p['name']}' in revision proposal")
+                return result
+            except Exception as e:
+                logger.warning(
+                    "Mediator revision attempt %d failed: %s\nRaw output was: %r",
+                    attempt + 1, e, raw
+                )
+                if attempt == max_retries:
+                    break
+    except Exception as e:
+        logger.warning(
+            "Mediator revision outer error: %s\nRaw output was: %r", e, raw
+        )
+
+    # Fallback: keep the current proposal unchanged
+    logger.error(
+        "Mediator failed to produce a valid revised proposal after %d retries — "
+        "keeping the previous proposal: %s",
+        max_retries + 1, current_proposal,
+    )
+    return {
+        "proposal": dict(current_proposal),
+        "reasoning": "Fallback: could not get a valid revision from the mediator agent — keeping the previous proposal.",
+    }

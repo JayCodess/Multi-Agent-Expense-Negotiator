@@ -5,6 +5,7 @@ Multi-agent expense negotiation UI with chat-style transcript rendering.
 Run with: streamlit run app.py
 """
 
+import html
 import json
 import os
 import sys
@@ -273,6 +274,8 @@ with st.sidebar:
             hmin = person.get("hard_min_budget")
             st.session_state[f"person_hmax_{i}"] = float(hmax) if hmax is not None else 0.0
             st.session_state[f"person_hmin_{i}"] = float(hmin) if hmin is not None else 0.0
+            st.session_state[f"person_hmax_none_{i}"] = hmax is None
+            st.session_state[f"person_hmin_none_{i}"] = hmin is None
 
         st.rerun()
 
@@ -382,31 +385,41 @@ for row_start in range(0, num_people, 2):
                 c1, c2 = st.columns(2)
                 with c1:
                     hard_max_val = ex.get("hard_max_budget")
+                    no_max = st.checkbox(
+                        "No max limit",
+                        value=hard_max_val is None,
+                        key=f"person_hmax_none_{i}",
+                    )
                     hard_max = st.number_input(
                         "Hard Max Budget",
                         min_value=0.0,
                         value=float(hard_max_val) if hard_max_val is not None else 0.0,
                         step=100.0,
                         key=f"person_hmax_{i}",
-                        help="Leave 0 for no limit",
+                        disabled=no_max,
                     )
                 with c2:
                     hard_min_val = ex.get("hard_min_budget")
+                    no_min = st.checkbox(
+                        "No min limit",
+                        value=hard_min_val is None,
+                        key=f"person_hmin_none_{i}",
+                    )
                     hard_min = st.number_input(
                         "Hard Min Budget",
                         min_value=0.0,
                         value=float(hard_min_val) if hard_min_val is not None else 0.0,
                         step=100.0,
                         key=f"person_hmin_{i}",
-                        help="Leave 0 for no limit",
+                        disabled=no_min,
                     )
 
                 if name.strip():
                     people.append({
                         "name": name.strip(),
                         "preferences": prefs.strip(),
-                        "hard_max_budget": hard_max if hard_max > 0 else None,
-                        "hard_min_budget": hard_min if hard_min > 0 else None,
+                        "hard_max_budget": None if no_max else hard_max,
+                        "hard_min_budget": None if no_min else hard_min,
                     })
 
 # ---------------------------------------------------------------------------
@@ -496,7 +509,7 @@ if result:
                 proposal = msg["proposal"]
                 table_html = '<table class="proposal-table"><tr><th>Person</th><th>Amount</th></tr>'
                 for name, amount in proposal.items():
-                    table_html += f"<tr><td>{name}</td><td>₹{amount:,.2f}</td></tr>"
+                    table_html += f"<tr><td>{html.escape(str(name))}</td><td>₹{amount:,.2f}</td></tr>"
                 table_html += "</table>"
                 st.markdown(table_html, unsafe_allow_html=True)
 
@@ -519,7 +532,7 @@ if result:
                     auto_tag = '<span class="auto-tag">⚡ AUTO</span>'
 
                 st.markdown(
-                    f"**{person_name}** {badge}{auto_tag}",
+                    f"**{html.escape(person_name)}** {badge}{auto_tag}",
                     unsafe_allow_html=True,
                 )
                 st.markdown(f"{msg.get('reason', '')}")

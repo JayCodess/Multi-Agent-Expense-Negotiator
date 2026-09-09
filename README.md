@@ -9,7 +9,6 @@
 ### 1. Create a virtual environment
 
 ```bash
-cd fairsplit-ai
 python -m venv venv
 
 # Windows
@@ -115,6 +114,12 @@ fairsplit-ai/
     ├── test_convergence.py       # Convergence logic tests
     └── test_graph_smoke.py       # Full graph smoke test
 ```
+
+---
+
+## 🎯 Design Decisions
+
+**LLM Provider:** Defaults to Google Gemini (`gemini-3.6-flash`) rather than Anthropic Claude, since Gemini offers a free API tier with no billing setup — better suited for a portfolio/demo project. Anthropic and OpenAI are fully supported as alternatives via `LLM_PROVIDER` in `.env`.
 
 ---
 

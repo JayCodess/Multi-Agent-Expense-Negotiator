@@ -92,7 +92,9 @@ def mediator_propose(state: NegotiationState) -> Dict[str, Any]:
         "proposal_history": history,
         "mediator_reasoning": reasoning,
         "messages": messages,
-        # Clear objections for this new round
+        # Defensive filter: keep only objections from strictly earlier rounds.
+        # (This is a no-op in normal flow since new objections for round_num haven't
+        # been collected yet — kept as a safety guard against duplicate state merges.)
         "objections": [o for o in state.get("objections", []) if o["round"] < round_num],
     }
 
