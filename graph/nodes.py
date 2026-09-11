@@ -6,6 +6,7 @@ Each function is a LangGraph node that receives and returns NegotiationState.
 
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any
 
 from graph.state import NegotiationState, Objection
@@ -143,25 +144,41 @@ def validate_hard_constraints(state: NegotiationState) -> Dict[str, Any]:
 def collect_objections(state: NegotiationState) -> Dict[str, Any]:
     """
     Node 3: For each person NOT already auto-objected, call their person agent
-    to ACCEPT or OBJECT. Append any objections to state.
+    to ACCEPT or OBJECT. Runs all person-agent LLM calls in parallel using
+    ThreadPoolExecutor, then reassembles results in original people order.
     """
     auto_objected = state.get("_auto_objected_names", [])
     objections = list(state.get("objections", []))
     messages = list(state.get("messages", []))
     round_num = state["round_number"]
 
-    for person in state["people"]:
-        name = person["name"]
-        if name in auto_objected:
-            continue
+    # Filter to people who need LLM evaluation
+    people_to_evaluate = [
+        p for p in state["people"] if p["name"] not in auto_objected
+    ]
 
-        result = evaluate_proposal(
-            name=name,
-            preferences=person["preferences"],
-            hard_max_budget=person.get("hard_max_budget"),
-            current_proposal=state["current_proposal"],
+    def _eval_person(person):
+        """Evaluate a single person's proposal — runs in a thread."""
+        return (
+            person["name"],
+            evaluate_proposal(
+                name=person["name"],
+                preferences=person["preferences"],
+                hard_max_budget=person.get("hard_max_budget"),
+                current_proposal=state["current_proposal"],
+            ),
         )
 
+    # Run all person-agent evaluations in parallel
+    results_by_name: Dict[str, Dict[str, str]] = {}
+    with ThreadPoolExecutor(max_workers=len(people_to_evaluate) or 1) as executor:
+        for name, result in executor.map(_eval_person, people_to_evaluate):
+            results_by_name[name] = result
+
+    # Reassemble in original state["people"] order for deterministic UI ordering
+    for person in people_to_evaluate:
+        name = person["name"]
+        result = results_by_name[name]
         decision = result["decision"]
         reason = result["reason"]
 

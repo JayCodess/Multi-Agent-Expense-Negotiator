@@ -122,6 +122,16 @@ html, body, [class*="css"] {
     font-weight: 600;
     margin-left: 6px;
 }
+.fallback-tag {
+    display: inline-block;
+    background: rgba(245, 158, 11, 0.15);
+    color: #b45309;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    margin-left: 6px;
+}
 
 /* Round divider */
 .round-divider {
@@ -235,6 +245,84 @@ EXPLAINER_AVATAR = "📝"
 
 def get_avatar(name: str, index: int) -> str:
     return PERSON_AVATARS[index % len(PERSON_AVATARS)]
+
+
+# ---------------------------------------------------------------------------
+# Render Messages Helper
+# ---------------------------------------------------------------------------
+def render_messages(messages, avatar_map, start_index=0, current_round_ref=None):
+    """
+    Render chat messages from start_index onward. Returns the index
+    after the last rendered message and the current round number.
+    current_round_ref tracks which round divider was last shown.
+    """
+    current_round = current_round_ref
+
+    for i in range(start_index, len(messages)):
+        msg = messages[i]
+        msg_round = msg.get("round", 0)
+
+        # Round divider
+        if msg_round != current_round:
+            current_round = msg_round
+            st.markdown(
+                f'<div class="round-divider"><span>Round {current_round}</span></div>',
+                unsafe_allow_html=True,
+            )
+
+        if msg["type"] == "proposal":
+            # Mediator proposal
+            with st.chat_message("Mediator", avatar=MEDIATOR_AVATAR):
+                # Detect fallback proposals
+                reasoning = msg.get("reasoning", "")
+                fallback_tag = ""
+                if reasoning.startswith("Fallback:"):
+                    fallback_tag = '<span class="fallback-tag">⚠️ fallback</span>'
+
+                st.markdown(
+                    f"**Mediator's Proposal — Round {msg_round}**{fallback_tag}",
+                    unsafe_allow_html=True,
+                )
+
+                # Render proposal as HTML table
+                proposal = msg["proposal"]
+                table_html = '<table class="proposal-table"><tr><th>Person</th><th>Amount</th></tr>'
+                for name, amount in proposal.items():
+                    table_html += f"<tr><td>{html.escape(str(name))}</td><td>₹{amount:,.2f}</td></tr>"
+                table_html += "</table>"
+                st.markdown(table_html, unsafe_allow_html=True)
+
+                if reasoning and not reasoning.startswith("Fallback:"):
+                    st.caption(f"💭 {reasoning}")
+                elif reasoning:
+                    st.caption(f"⚠️ {reasoning}")
+
+        elif msg["type"] == "decision":
+            person_name = msg["role"]
+            avatar = avatar_map.get(person_name, "👤")
+            decision = msg["decision"]
+
+            with st.chat_message(person_name, avatar=avatar):
+                if decision == "ACCEPT":
+                    badge = '<span class="accept-badge">✓ ACCEPT</span>'
+                else:
+                    badge = '<span class="object-badge">✗ OBJECT</span>'
+
+                auto_tag = ""
+                if msg.get("auto"):
+                    auto_tag = '<span class="auto-tag">⚡ AUTO</span>'
+
+                st.markdown(
+                    f"**{html.escape(person_name)}** {badge}{auto_tag}",
+                    unsafe_allow_html=True,
+                )
+                st.markdown(f"{msg.get('reason', '')}")
+
+        elif msg["type"] == "explanation":
+            with st.chat_message("Explainer", avatar=EXPLAINER_AVATAR):
+                st.markdown(msg.get("text", ""))
+
+    return len(messages), current_round
 
 
 # ---------------------------------------------------------------------------
@@ -463,83 +551,76 @@ if run_button and can_run:
         messages=[],
     )
 
-    # Build and run graph
+    # Build avatar map for rendering
+    streaming_avatar_map = {}
+    for i, p in enumerate(people):
+        streaming_avatar_map[p["name"]] = get_avatar(p["name"], i)
+
+    # Build and stream graph
     graph = build_negotiation_graph()
 
-    with st.spinner("🤖 Agents are negotiating..."):
-        try:
-            final_state = graph.invoke(initial_state)
+    st.markdown("---")
+    st.markdown("### 💬 Negotiation Transcript")
+
+    rendered_count = 0
+    current_round_ref = None
+    final_state = None
+
+    try:
+        with st.status("⚡ Negotiating...", expanded=True) as status_ui:
+            for state_snapshot in graph.stream(initial_state, stream_mode="values"):
+                final_state = state_snapshot
+                messages = state_snapshot.get("messages", [])
+                round_num = state_snapshot.get("round_number", 1)
+                current_status = state_snapshot.get("status", "negotiating")
+
+                # Update progress label
+                if current_status == "negotiating":
+                    status_ui.update(
+                        label=f"⚡ Round {round_num} of {max_rounds} — agents negotiating...",
+                        state="running",
+                    )
+                elif current_status == "converged":
+                    status_ui.update(
+                        label="✅ Agreement reached!",
+                        state="complete",
+                    )
+                elif current_status == "unresolved":
+                    status_ui.update(
+                        label="⚠️ Max rounds reached — unresolved",
+                        state="complete",
+                    )
+
+                # Render only new messages
+                if len(messages) > rendered_count:
+                    rendered_count, current_round_ref = render_messages(
+                        messages, streaming_avatar_map,
+                        start_index=rendered_count,
+                        current_round_ref=current_round_ref,
+                    )
+
+        if final_state:
             st.session_state.negotiation_result = final_state
-        except Exception as e:
-            st.error(f"Negotiation failed: {e}")
-            logging.exception("Negotiation graph error")
+    except Exception as e:
+        st.error(f"Negotiation failed: {e}")
+        logging.exception("Negotiation graph error")
 
 # ---------------------------------------------------------------------------
 # Render Results
 # ---------------------------------------------------------------------------
 result = st.session_state.negotiation_result
 if result:
-    st.markdown("---")
-    st.markdown("### 💬 Negotiation Transcript")
+    # Only show the static transcript header if we didn't just stream it
+    if not run_button:
+        st.markdown("---")
+        st.markdown("### 💬 Negotiation Transcript")
 
-    messages = result.get("messages", [])
-    avatar_map = {}
-    for i, p in enumerate(result.get("people", [])):
-        avatar_map[p["name"]] = get_avatar(p["name"], i)
+        messages = result.get("messages", [])
+        avatar_map = {}
+        for i, p in enumerate(result.get("people", [])):
+            avatar_map[p["name"]] = get_avatar(p["name"], i)
 
-    current_round = None
-
-    for msg in messages:
-        msg_round = msg.get("round", 0)
-
-        # Round divider
-        if msg_round != current_round:
-            current_round = msg_round
-            st.markdown(
-                f'<div class="round-divider"><span>Round {current_round}</span></div>',
-                unsafe_allow_html=True,
-            )
-
-        if msg["type"] == "proposal":
-            # Mediator proposal
-            with st.chat_message("Mediator", avatar=MEDIATOR_AVATAR):
-                st.markdown(f"**Mediator's Proposal — Round {msg_round}**")
-
-                # Render proposal as HTML table
-                proposal = msg["proposal"]
-                table_html = '<table class="proposal-table"><tr><th>Person</th><th>Amount</th></tr>'
-                for name, amount in proposal.items():
-                    table_html += f"<tr><td>{html.escape(str(name))}</td><td>₹{amount:,.2f}</td></tr>"
-                table_html += "</table>"
-                st.markdown(table_html, unsafe_allow_html=True)
-
-                if msg.get("reasoning"):
-                    st.caption(f"💭 {msg['reasoning']}")
-
-        elif msg["type"] == "decision":
-            person_name = msg["role"]
-            avatar = avatar_map.get(person_name, "👤")
-            decision = msg["decision"]
-
-            with st.chat_message(person_name, avatar=avatar):
-                if decision == "ACCEPT":
-                    badge = '<span class="accept-badge">✓ ACCEPT</span>'
-                else:
-                    badge = '<span class="object-badge">✗ OBJECT</span>'
-
-                auto_tag = ""
-                if msg.get("auto"):
-                    auto_tag = '<span class="auto-tag">⚡ AUTO</span>'
-
-                st.markdown(
-                    f"**{html.escape(person_name)}** {badge}{auto_tag}",
-                    unsafe_allow_html=True,
-                )
-                st.markdown(f"{msg.get('reason', '')}")
-
-        elif msg["type"] == "explanation":
-            with st.chat_message("Explainer", avatar=EXPLAINER_AVATAR):
-                st.markdown(msg.get("text", ""))
+        render_messages(messages, avatar_map)
 
     # ---------------------------------------------------------------------------
     # Final Summary
