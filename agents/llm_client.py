@@ -11,6 +11,7 @@ Priority: GOOGLE_API_KEY → ANTHROPIC_API_KEY → OPENAI_API_KEY
 """
 
 import os
+import time
 import logging
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage
@@ -84,12 +85,12 @@ def get_llm():
         from langchain_google_genai import ChatGoogleGenerativeAI
 
         _llm_instance = ChatGoogleGenerativeAI(
-            model="gemini-3.6-flash",
+            model="gemini-2.5-flash",
             google_api_key=api_key,
             temperature=0.4,
             max_output_tokens=1024,
         )
-        logger.info("Using Google Gemini (free tier) as LLM provider.")
+        logger.info("Using Google Gemini (gemini-2.5-flash, free tier) as LLM provider.")
         return _llm_instance
 
     # --- Anthropic (Claude) ---
@@ -147,18 +148,34 @@ def reset_llm():
     _llm_instance = None
 
 
-def call_llm(prompt: str) -> str:
+def call_llm(prompt: str, max_retries: int = 3) -> str:
     """
     Send a single human message to the configured LLM and return the response text.
+    Retries with exponential backoff on transient rate-limit (429) errors.
     """
     llm = get_llm()
-    response = llm.invoke([HumanMessage(content=prompt)])
-    content = response.content
-    # Gemini may return content as a list of parts — join them into a string
-    if isinstance(content, list):
-        content = "\n".join(
-            part if isinstance(part, str) else part.get("text", str(part))
-            for part in content
-        )
-    return content
+
+    for attempt in range(max_retries + 1):
+        try:
+            response = llm.invoke([HumanMessage(content=prompt)])
+            content = response.content
+            # Gemini may return content as a list of parts — join them into a string
+            if isinstance(content, list):
+                content = "\n".join(
+                    part if isinstance(part, str) else part.get("text", str(part))
+                    for part in content
+                )
+            return content
+        except Exception as e:
+            error_str = str(e)
+            is_rate_limit = "429" in error_str or "RESOURCE_EXHAUSTED" in error_str
+            if is_rate_limit and attempt < max_retries:
+                wait = 2 ** attempt * 5  # 5s, 10s, 20s
+                logger.warning(
+                    "Rate limited (attempt %d/%d) — retrying in %ds: %s",
+                    attempt + 1, max_retries + 1, wait, e,
+                )
+                time.sleep(wait)
+            else:
+                raise
 
