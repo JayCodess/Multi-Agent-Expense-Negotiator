@@ -63,4 +63,4 @@ pytest tests/ -v
 
 ## Tech Stack
 
-LangGraph · Streamlit · Gemini 2.5 Flash (default) · Claude / GPT-4o (optional)
+LangGraph · Streamlit · Gemini 3.8 Flash (default) · Claude / GPT-4o (optional)

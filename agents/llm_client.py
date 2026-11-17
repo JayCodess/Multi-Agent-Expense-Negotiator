@@ -28,7 +28,7 @@ load_dotenv()
 try:
     import streamlit as st
 
-    for key in ("GOOGLE_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "LLM_PROVIDER"):
+    for key in ("GOOGLE_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "LLM_PROVIDER", "GEMINI_MODEL"):
         if key not in os.environ and key in st.secrets:
             os.environ[key] = st.secrets[key]
 except Exception:
@@ -84,13 +84,14 @@ def get_llm():
             )
         from langchain_google_genai import ChatGoogleGenerativeAI
 
+        model_name = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
         _llm_instance = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
+            model=model_name,
             google_api_key=api_key,
             temperature=0.4,
             max_output_tokens=1024,
         )
-        logger.info("Using Google Gemini (gemini-2.5-flash, free tier) as LLM provider.")
+        logger.info("Using Google Gemini (%s, free tier) as LLM provider.", model_name)
         return _llm_instance
 
     # --- Anthropic (Claude) ---
