@@ -6,6 +6,8 @@ Each function is a LangGraph node that receives and returns NegotiationState.
 
 import json
 import logging
+import os
+import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any
 
@@ -18,11 +20,25 @@ from validators.hard_constraints import validate_proposal_sum, check_hard_budget
 logger = logging.getLogger(__name__)
 
 
+def _get_log_path() -> str:
+    """Return a writable path for the negotiation log.
+    On Streamlit Cloud the app directory is read-only, so fall back to /tmp."""
+    default_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "negotiation_log.json")
+    try:
+        # Quick write test
+        with open(default_path, "a"):
+            pass
+        return default_path
+    except OSError:
+        return os.path.join(tempfile.gettempdir(), "negotiation_log.json")
+
+
 def _log_state(state: dict, label: str):
     """Write state snapshot to negotiation_log.json (append-friendly)."""
+    log_path = _get_log_path()
     try:
         try:
-            with open("negotiation_log.json", "r") as f:
+            with open(log_path, "r") as f:
                 log_data = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
             log_data = []
@@ -34,7 +50,7 @@ def _log_state(state: dict, label: str):
             "round_number": state.get("round_number"),
         }})
 
-        with open("negotiation_log.json", "w") as f:
+        with open(log_path, "w") as f:
             json.dump(log_data, f, indent=2)
     except Exception as e:
         logger.warning("Failed to write negotiation log: %s", e)

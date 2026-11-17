@@ -17,6 +17,22 @@ from langchain_core.messages import HumanMessage
 
 load_dotenv()
 
+# ---------------------------------------------------------------------------
+# Streamlit Cloud secrets support
+# On Streamlit Cloud, .env is not available (gitignored). Instead, secrets
+# are configured through the Streamlit Cloud dashboard and accessed via
+# st.secrets. We inject them into os.environ so the rest of the code works
+# transparently.
+# ---------------------------------------------------------------------------
+try:
+    import streamlit as st
+
+    for key in ("GOOGLE_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "LLM_PROVIDER"):
+        if key not in os.environ and key in st.secrets:
+            os.environ[key] = st.secrets[key]
+except Exception:
+    pass  # Not running in Streamlit, or st.secrets not configured
+
 logger = logging.getLogger(__name__)
 
 _llm_instance = None

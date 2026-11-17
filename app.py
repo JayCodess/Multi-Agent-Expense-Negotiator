@@ -533,8 +533,14 @@ if run_button and can_run:
     st.session_state.negotiation_result = None
 
     # Initialize negotiation log
-    with open("negotiation_log.json", "w") as f:
-        json.dump([], f)
+    import tempfile
+    _log_path = os.path.join(tempfile.gettempdir(), "negotiation_log.json")
+    try:
+        with open("negotiation_log.json", "w") as f:
+            json.dump([], f)
+    except OSError:
+        with open(_log_path, "w") as f:
+            json.dump([], f)
 
     initial_state = NegotiationState(
         total_amount=total_amount,
